@@ -77,6 +77,9 @@ if __name__ == "__main__":
     X = T.imatrix("X")
     Y = T.fvector("Y")
 
+    with open("model/w2v_rouge1.bin", mode="rb") as f:
+        params = pickle.load(f)
+
     minibatch_size = 100
     sentence_length = X_train.shape[1]
     embsize = embed_matrix.shape[1]
@@ -89,15 +92,15 @@ if __name__ == "__main__":
     project_layer = ProjectionLayer(rng,X,vocab_size,embsize,(minibatch_size,sentence_length),embed_matrix=embed_matrix)
 
     #conv_layer
-    conv_layer = LenetConvPoolLayer(rng, project_layer.output,sentence_shape,filter_shape,pool_size,activation=T.tanh)
+    conv_layer = LenetConvPoolLayer(rng, project_layer.output,sentence_shape,filter_shape,pool_size,activation=T.tanh,params=params[0:2])
 
     # hidden_layer
     hidden_input = conv_layer.output.flatten(2)
     hidden_input_shape = (conv_layer.output_shape[0], conv_layer.output_shape[1]*conv_layer.output_shape[2]*conv_layer.output_shape[3])
-    hidden_layer = FullConectedLayer(rng,hidden_input,hidden_input_shape[1],100,activation=T.tanh)
+    hidden_layer = FullConectedLayer(rng,hidden_input,hidden_input_shape[1],100,activation=T.tanh,params=params[2:4])
 
     # regression_layer
-    regession_layer = RegresstionLayer(rng,hidden_layer.output,100,1,activation=T.tanh)
+    regession_layer = RegresstionLayer(rng,hidden_layer.output,100,1,activation=T.tanh, params=params[4:6])
 
     mse = regession_layer.mse(Y)
 
@@ -179,6 +182,9 @@ if __name__ == "__main__":
         else:
             sys.stdout.write("\n")
             patience +=1
+
+        _,_,pred,mse,cost = showfunction(X_valid[:100],Y_valid_rouge1[:100])
+        sys.stdout.write("{0} {1}".format(pred[:5],Y_valid_rouge1[:5]))
         sys.stdout.write("\n")
 
 

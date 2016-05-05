@@ -32,7 +32,7 @@ if __name__ == "__main__":
     X = T.imatrix("X")
     Y = T.dvector("Y")
 
-    minibatch_size = 100
+    minibatch_size = 5
     sentence_length = X_train.shape[1]
     embsize = embed_matrix.shape[1]
     vocab_size = embed_matrix.shape[0]
@@ -41,9 +41,9 @@ if __name__ == "__main__":
     pool_size = (3,1)
 
     params = [None]*6
-    with open("model/w2v_rouge2.bin", mode="rb") as f:
+    with open("model/w2v_rouge1.bin", mode="rb") as f:
         params = pickle.load(f)
-    params = [None]*6
+
     # maybe wrong in 0_index: is UNK work, Yoon Kim set to vector 0
     project_layer = ProjectionLayer(rng,X,vocab_size,embsize,(minibatch_size,sentence_length),embed_matrix=embed_matrix)
 
@@ -68,8 +68,8 @@ if __name__ == "__main__":
 
     showfunction = theano.function([X], [project_layer.output, conv_layer.conv_out, conv_layer.pooled_out , conv_layer.output, hidden_layer.output, regession_layer.output])
 
-    hy = X_valid[:2]
+    hy = X_valid[:5]
     proout, conv_out, pool_out, conv_layer_out , hidden_out, regress_out = showfunction(hy)
-    print("ttdtilu")
-
+    print(regress_out)
+    print(Y_valid_rouge1[:5])
 
