@@ -29,12 +29,11 @@ class LenetConvPoolLayer(object):
             fan_out = (filter_shape[0] * np.prod(filter_shape[2:]) / np.prod(poolsize))
             # initialize weights with random weights
             W_bound = np.sqrt(6. / (fan_in + fan_out))
-            self.W = theano.shared(np.asarray(
-                rng.uniform(low=-W_bound, high=W_bound, size=filter_shape),
-                dtype=np.float64),
+            self.W = theano.shared(np.asarray(rng.uniform(low=-W_bound, high=W_bound, size=filter_shape),
+                                              dtype=np.float64),
                                    borrow=True)
 
-            b_values = np.zeros((filter_shape[0],), dtype=np.float64)
+            b_values = np.zeros((self.output_shape[1],self.output_shape[2],self.output_shape[3]), dtype=np.float64)
             self.b = theano.shared(value=b_values, borrow=True)
         else:
             self.W, self.b = params[0], params[1]
@@ -42,11 +41,12 @@ class LenetConvPoolLayer(object):
          # convolve input feature maps with filters
         self.conv_out = conv.conv2d(input=input, filters=self.W, filter_shape=filter_shape, image_shape=image_shape, border_mode=border_mode)
 
-        pool.pool_2d(input=self.conv_out, ds=poolsize, ignore_border=True)
         # downsample each feature map individually, using maxpooling
-        pooled_out = pool.pool_2d(input=self.conv_out, ds=poolsize, ignore_border=True)
+        self.pooled_out = pool.pool_2d(input=self.conv_out, ds=poolsize, ignore_border=True)
 
-        self.output = self.activation(pooled_out + self.b.dimshuffle('x', 0, 'x', 'x'))
+        self.output = self.activation(self.pooled_out + self.b)
+
+        #todo phat sinh lai b bang np.rand
 
         self.params = [self.W, self.b]
 

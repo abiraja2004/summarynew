@@ -1,14 +1,26 @@
-__author__ = 'HyNguyen'
-
+import theano
+import theano.tensor as T
 import numpy as np
-
-from vector.wordvectors import WordVectors
-import sys
-import time
-from nltk.parse.stanford import StanfordParser
-
 if __name__ == "__main__":
-    a = WordVectors.load_from_text_format("model/word2vec.txt",name= "word2vec")
-    np.save("data/word2vec/embed_matrix.npy",a.embed_matrix)
 
+    rng = np.random.RandomState(4488)
 
+    X_ = rng.uniform(size=(3,2*5*5))
+    print (X_)
+    X = T.dmatrix("X")
+
+    hy = T.reshape(X,(3,2,5,5))
+
+    bias = theano.shared(value= np.asarray(rng.uniform(-1,1,(2,5,5)) ,dtype=np.float64),
+                                   name ="b",
+                                   borrow=True
+            )
+
+    bias_ = bias.get_value()
+
+    AA = hy + bias
+    print bias.shape
+
+    show_function = theano.function([X], [hy,AA])
+    hy_,AA_ = show_function(X_)
+    print(AA_.shape)

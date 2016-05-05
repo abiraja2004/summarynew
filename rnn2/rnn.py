@@ -130,7 +130,7 @@ class RecursiveNeuralNetworl(object):
 
         # back propagation softmax
         delta = softmax_layer - t
-        grad = np.dot(tree.p.T,delta) + self.l2_reg_level*self.Ws
+        grad = np.dot(tree.p.T,delta)
         self.dWs += grad
         self.dbs += delta
         # return gradient propagation for previous layer
@@ -142,9 +142,9 @@ class RecursiveNeuralNetworl(object):
             return
         # delta + grand for left side and right side
         delta_left = back_grad*self.act_func.derivative(tree.left_child.p)
-        grad_left = np.dot(tree.left_child.p.T,delta_left) + self.l2_reg_level*self.Wh_l
+        grad_left = np.dot(tree.left_child.p.T,delta_left)
         delta_right = back_grad*self.act_func.derivative(tree.right_child.p)
-        grad_right = np.dot(tree.right_child.p.T,delta_right) + self.l2_reg_level*self.Wh_r
+        grad_right = np.dot(tree.right_child.p.T,delta_right)
         self.dbh = self.dbh + delta_left + delta_right
         self.dWh_l += grad_left
         self.dWh_r += grad_right
@@ -196,10 +196,6 @@ class RecursiveNeuralNetworl(object):
             self.backward(mnb_roots_node[i],mnb_softmax_layer[i],mnb_correct[i])
 
         avg = 1. / self.mnb_size
-
-        cost += (self.l2_reg_level/2)*np.sum(self.Wh_l**2)
-        cost += (self.l2_reg_level/2)*np.sum(self.Wh_r**2)
-        cost += (self.l2_reg_level/2)*np.sum(self.Ws**2)
         cost = avg*cost
 
         gWh_l = avg * self.dWh_l
@@ -216,7 +212,8 @@ class RecursiveNeuralNetworl(object):
         cost, gWh_l, gWh_r, gbh, gWs, gbs = self.cost_grad(data,label)
         err = 0.0
         count = 0.0
-        print 'Checking dWh_l...'
+
+        print 'Checking dbh...'
         Wh_l = self.Wh_l[...,None]
         dWh_l = gWh_l
         for i in xrange(Wh_l.shape[0]):
@@ -229,9 +226,9 @@ class RecursiveNeuralNetworl(object):
                 count+=1
 
         if 0.001 > err/count:
-            print "Grad check passed for dWh"
+            print "Grad check passed for dWh_l"
         else:
-            print "Grad check failed for dWh: sum of error = %.9f"%(err/count)
+            print "Grad check failed for dWh_l: sum of error = %.9f"%(err/count)
 
 
 
@@ -246,38 +243,68 @@ parser = StanfordParser(path_to_jar="/Users/HyNguyen/Downloads/stanford-parser-f
 if __name__ == "__main__":
 
     rng = np.random.RandomState(4488)
-    wordvector = WordVectors.load_from_text_format("model/word2vec.txt", "word2vec")
+    wordvector = WordVectors.load_from_text_format("model/cwvector.txt", "cwvector")
     pos_sent = []
     neg_sent = []
+
     with open("data/rt-polarity.neg.txt",mode="r") as f:
-        neg_sent.append(f.readline())
-        neg_sent.append(f.readline())
-        neg_sent.append(f.readline())
+        neg_sent = f.readlines()
 
     with open("data/rt-polarity.pos.txt",mode="r") as f:
-        pos_sent.append(f.readline())
-        pos_sent.append(f.readline())
-        pos_sent.append(f.readline())
+        pos_sent = f.readlines()
 
 
     trees = []
-    labels = [0]*3 + [1]*3
-    sents = pos_sent + neg_sent
+    labels = [1]*2 + [0]*2
+    sents = pos_sent[:2] + neg_sent[:2]
     for sent in sents:
         a = list(parser.raw_parse(sent))
         hytree = a[0]
         chomsky_normal_form(hytree)
         trees.append(hytree[0])
 
-    rnn = RecursiveNeuralNetworl(embsize=300,mnb_size=6,wordvector=wordvector)
+    rnn = RecursiveNeuralNetworl(embsize=50,mnb_size=4,wordvector=wordvector)
+    rnn.check_grad(trees,labels)
 
-    trees[0].pretty_print()
+    # trees_neg = []
+    # trees_pos = []
+    # for sent in neg_sent:
+    #     try:
+    #         a = list(parser.raw_parse(sent))
+    #         hytree = a[0]
+    #         chomsky_normal_form(hytree)
+    #         trees_neg.append(hytree[0])
+    #     except:
+    #         continue
+    #
+    # for sent in pos_sent:
+    #     try:
+    #         a = list(parser.raw_parse(sent))
+    #         hytree = a[0]
+    #         chomsky_normal_form(hytree)
+    #         trees_pos.append(hytree[0])
+    #     except:
+    #         continue
+    #
+    # X_train = trees_neg[:-500] + trees_pos[:-500]
+    # X_valid = trees_neg[-500:] + trees_pos[-500:]
+    # Y_train = [0]*len(trees_neg[:-500]) + [1]*len(trees_pos[:-500])
+    # Y_valid = [0]*len(trees_neg[-500:]) + [1]*len(trees_pos[-500:])
+    #
+    # import pickle
+    # with open("rnnsave.pickle", mode="wb") as f:
+    #     pickle.dump((X_train,Y_train,X_valid,Y_valid),f)
 
-    for tree,label in zip(trees,labels):
-        root_node, softmax_layer, cost, pred = rnn.forward(tree,label)
-        print("correct {0}, predict {1}, cost {2}".format(label,pred,cost))
 
-
+    # rnn = RecursiveNeuralNetworl(embsize=300,mnb_size=6,wordvector=wordvector)
+    #
+    # trees[0].pretty_print()
+    #
+    # for tree,label in zip(trees,labels):
+    #     root_node, softmax_layer, cost, pred = rnn.forward(tree,label)
+    #     print("correct {0}, predict {1}, cost {2}".format(label,pred,cost))
+    #
+    # rnn.check_grad(trees[:4],labels[:4])
 
 
     # if have_1_child
