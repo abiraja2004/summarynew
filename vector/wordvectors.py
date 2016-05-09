@@ -142,14 +142,10 @@ class WordVectors(object):
     def wordvector(self, word):
         if self.name != "word2vec":
             word = word.lower()
-        if word in self.word_index.keys():
-            self.count_exist_word +=1
-            # print("try")
-            return self.embed_matrix[self.word_index[word]]
-        else:
-            # print("except")
-            #Null word
-            self.count_null_word +=1
+        try:
+            index = self.word_index[word]
+            return self.embed_matrix[index]
+        except:
             return self.embed_matrix[1]
 
     def get_vector_addtion(self, words):
@@ -160,7 +156,6 @@ class WordVectors(object):
 
     def prepare_index_from_string(self, sentence, min_length= 10, max_length=70):
         print "ttdtilu"
-
 
     def cae_prepare_data_from_string(self, sentence, min_length=10,  max_length=100):
         sentence = sentence.replace("\n","")
@@ -192,6 +187,9 @@ if __name__ == "__main__":
     print(wordvector.embed_matrix.shape)
     print(len(wordvector.word_index))
 
+    
+
+from scipy.optimize import minimize, rosen, rosen_der
 
 
 

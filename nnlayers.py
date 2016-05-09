@@ -9,111 +9,206 @@ from lasagne.updates import sgd, adadelta
 from sklearn import preprocessing
 import pickle
 
-class LenetConvPoolLayer(object):
+def ReLU(x):
+    y = T.maximum(0.0, x)
+    return(y)
+def Sigmoid(x):
+    y = T.nnet.sigmoid(x)
+    return(y)
+def Tanh(x):
+    y = T.tanh(x)
+    return(y)
+def Iden(x):
+    y = x
+    return(y)
 
-    def __init__(self, rng, input, image_shape, filter_shape, poolsize , border_mode ='valid' , activation = T.nnet.sigmoid, params = [None, None]):
-        self.input = input
-        self.image_shape = image_shape
-        # image_shape = (mini_batch_size,1,sentence_length, embed_size)
-        # filter_shape: (20,1,5,100)
-        self.filter_shape = filter_shape
-        self.poolsize = poolsize
-        self.activation = activation
-        self.output_shape = (image_shape[0],filter_shape[0],int((image_shape[2]-filter_shape[2]+1)/poolsize[0]),int(image_shape[3]-filter_shape[3]+1)/poolsize[1])
+class LeNetConvPoolLayer(object):
+    """Pool Layer of a convolutional network """
+
+    def __init__(self, rng, input, filter_shape, image_shape, poolsize=(2, 2), non_linear="tanh"):
+        """
+        Allocate a LeNetConvPoolLayer with shared variable internal parameters.
+
+        :type rng: np.random.RandomState
+        :param rng: a random number generator used to initialize weights
+
+        :type input: theano.tensor.dtensor4
+        :param input: symbolic image tensor, of shape image_shape
+
+        :type filter_shape: tuple or list of length 4
+        :param filter_shape: (number of filters, num input feature maps, filter height, filter width)
+
+        :type image_shape: tuple or list of length 4
+        :param image_shape: (batch size, num input feature maps, image height, image width)
+
+        :type poolsize: tuple or list of length 2
+        :param poolsize: the downsampling (pooling) factor (#rows,#cols)
+        """
 
         assert image_shape[1] == filter_shape[1]
         self.input = input
+        self.filter_shape = filter_shape
+        self.image_shape = image_shape
+        self.poolsize = poolsize
+        self.non_linear = non_linear
+        self.output_shape = (image_shape[0],filter_shape[0],int((image_shape[2]-filter_shape[2]+1)/poolsize[0]),int(image_shape[3]-filter_shape[3]+1)/poolsize[1])
 
-        if params[0] is None:
-            fan_in = np.prod(filter_shape[1:])
-            fan_out = (filter_shape[0] * np.prod(filter_shape[2:]) / np.prod(poolsize))
-            # initialize weights with random weights
+        # there are "num input feature maps * filter height * filter width"
+        # inputs to each hidden unit
+        fan_in = np.prod(filter_shape[1:])
+        # each unit in the lower layer receives a gradient from:
+        # "num output feature maps * filter height * filter width" /
+        #   pooling size
+        fan_out = (filter_shape[0] * np.prod(filter_shape[2:]) /np.prod(poolsize))
+        # initialize weights with random weights
+        if self.non_linear=="none" or self.non_linear=="relu":
+            self.W = theano.shared(np.asarray(rng.uniform(low=-0.01,high=0.01,size=filter_shape),
+                                                dtype=theano.config.floatX),borrow=True,name="W_conv")
+        else:
             W_bound = np.sqrt(6. / (fan_in + fan_out))
             self.W = theano.shared(np.asarray(rng.uniform(low=-W_bound, high=W_bound, size=filter_shape),
-                                              dtype=np.float64),
-                                   borrow=True)
+                dtype=theano.config.floatX),borrow=True,name="W_conv")
+        b_values = np.zeros((self.output_shape[1],self.output_shape[2],self.output_shape[3]), dtype=theano.config.floatX)
+        self.b = theano.shared(value=b_values, borrow=True, name="b_conv")
 
-            b_values = np.zeros((self.output_shape[1],self.output_shape[2],self.output_shape[3]), dtype=np.float64)
-            self.b = theano.shared(value=b_values, borrow=True)
+        # convolve input feature maps with filters
+        conv_out = conv.conv2d(input=input, filters=self.W,filter_shape=self.filter_shape, image_shape=self.image_shape)
+        if self.non_linear=="tanh":
+            conv_out_tanh = T.tanh(conv_out + self.b)
+            self.output = pool.max_pool_2d(input=conv_out_tanh, ds=self.poolsize, ignore_border=True)
+        elif self.non_linear=="relu":
+            conv_out_tanh = ReLU(conv_out + self.b)
+            self.output = pool.max_pool_2d(input=conv_out_tanh, ds=self.poolsize, ignore_border=True)
         else:
-            self.W, self.b = params[0], params[1]
-
-         # convolve input feature maps with filters
-        self.conv_out = conv.conv2d(input=input, filters=self.W, filter_shape=filter_shape, image_shape=image_shape, border_mode=border_mode)
-
-        # downsample each feature map individually, using maxpooling
-        self.pooled_out = pool.pool_2d(input=self.conv_out, ds=poolsize, ignore_border=True)
-
-        self.output = self.activation(self.pooled_out + self.b)
-
-        #todo phat sinh lai b bang np.rand
-
+            pooled_out = pool.max_pool_2d(input=conv_out, ds=self.poolsize, ignore_border=True)
+            self.output = pooled_out + self.b
         self.params = [self.W, self.b]
+
+        self.L2 = (self.W**2).sum()
+
+    def predict(self, new_data, batch_size):
+        """
+        predict for new data
+        """
+        img_shape = (batch_size, 1, self.image_shape[2], self.image_shape[3])
+        conv_out = conv.conv2d(input=new_data, filters=self.W, filter_shape=self.filter_shape, image_shape=img_shape)
+        if self.non_linear=="tanh":
+            conv_out_tanh = T.tanh(conv_out + self.b)
+            output = pool.max_pool_2d(input=conv_out_tanh, ds=self.poolsize, ignore_border=True)
+        elif self.non_linear=="relu":
+            conv_out_tanh = ReLU(conv_out + self.b)
+            output = pool.max_pool_2d(input=conv_out_tanh, ds=self.poolsize, ignore_border=True)
+        else:
+            pooled_out = pool.max_pool_2d(input=conv_out, ds=self.poolsize, ignore_border=True)
+            output = pooled_out + self.b
+        return output
+
+class HiddenLayer(object):
+    """
+    Class for HiddenLayer
+    """
+    def __init__(self, rng, input, n_in, n_out, activation, W=None, b=None,use_bias=False):
+
+        self.input = input
+        self.activation = activation
+
+        if W is None:
+            if activation.func_name == "ReLU":
+                W_values = np.asarray(0.01 * rng.standard_normal(size=(n_in, n_out)), dtype=theano.config.floatX)
+            else:
+                W_values = np.asarray(rng.uniform(low=-np.sqrt(6. / (n_in + n_out)), high=np.sqrt(6. / (n_in + n_out)),
+                                                     size=(n_in, n_out)), dtype=theano.config.floatX)
+            W = theano.shared(value=W_values, name='W')
+        if b is None:
+            b_values = np.zeros((n_out,), dtype=theano.config.floatX)
+            b = theano.shared(value=b_values, name='b')
+
+        self.W = W
+        self.b = b
+
+        if use_bias:
+            lin_output = T.dot(input, self.W) + self.b
+        else:
+            lin_output = T.dot(input, self.W)
+
+        self.output = (lin_output if activation is None else activation(lin_output))
+
+        # parameters of the model
+        if use_bias:
+            self.params = [self.W, self.b]
+        else:
+            self.params = [self.W]
 
         self.L2 = (self.W**2).sum()
 
 class ProjectionLayer(object):
     def __init__(self,rng ,input, vocab_size, embsize, input_shape, params = [None], embed_matrix = None):
         if embed_matrix is None:
-            if params[0] is None:
-
-                self.words_embedding = theano.shared(value= np.asarray(rng.normal(0,0.1,(vocab_size,embsize)),dtype=np.float64),
-                                       name = "wordembedding",
+            self.words_embedding = theano.shared(value= np.asarray(rng.normal(0,0.1,(vocab_size,embsize)),dtype=theano.config.floatX),
+                                       name = "wordvector",
                                        borrow=True)
-            else:
-                self.words_embedding = params[0]
         else:
-            self.words_embedding = theano.shared(value= np.asarray(embed_matrix,dtype=np.float64),
-                                   name = "embed_matrix",
+            self.words_embedding = theano.shared(value= np.asarray(embed_matrix,dtype=theano.config.floatX),
+                                   name = "wordvector",
                                    borrow=True)
 
         self.output_shape = (input_shape[0],1,input_shape[1],embsize)
         self.output = self.words_embedding[T.cast(input.flatten(1),dtype="int32")].reshape(self.output_shape)
         self.params = [self.words_embedding]
+
         self.L2 = (self.words_embedding**2).sum()
 
-class FullConectedLayer(object):
-    def __init__(self, rng ,input, n_in, n_out, activation = T.nnet.sigmoid, params = [None,None]):
-        if params[0] == None:
-            self.W = theano.shared(value= np.asarray(rng.rand(n_in,n_out)/np.sqrt(n_in+1),dtype=np.float64),
-                                   name = "W",
-                                   borrow=True)
-            self.b = theano.shared(value= np.asarray(rng.rand(n_out,) ,dtype=np.float64),
-                                   name ="b",
-                                   borrow=True
-            )
-        else:
-            self.W, self.b = params[0], params[1]
-
-        self.input = input
-        self.output = activation(T.dot(input,self.W) + self.b)
-        self.params = [self.W, self.b]
-        self.L1 = abs(self.W).sum()
-        self.L2 = (self.W**2).sum()
-
-
 class RegresstionLayer(object):
-    def __init__(self, rng, input, n_in, n_out, activation = T.nnet.sigmoid, params = [None, None]):
-        if params[0] == None:
-            self.W = theano.shared(value= np.asarray(rng.rand(n_in,n_out)/np.sqrt(n_in+1),dtype=np.float64),
-                                   name = "W",
-                                   borrow=True)
-            self.b = theano.shared(value= np.asarray(rng.rand(n_out,) ,dtype=np.float64),
-                                   name ="b",
-                                   borrow=True
-            )
-        else:
-            self.W, self.b = params[0], params[1]
+    def __init__(self, rng, input, n_in, n_out, activation, W=None, b=None,use_bias=False):
 
         self.input = input
-        self.output = activation(T.dot(input,self.W) + self.b)
-        self.y_pred = self.output.flatten(1)
-        self.params = [self.W, self.b]
-        self.L1 = abs(self.W).sum()
+        self.activation = activation
+
+        if W is None:
+            if activation.func_name == "ReLU":
+                W_values = np.asarray(0.01 * rng.standard_normal(size=(n_in, n_out)), dtype=theano.config.floatX)
+            else:
+                W_values = np.asarray(rng.uniform(low=-np.sqrt(6. / (n_in + n_out)), high=np.sqrt(6. / (n_in + n_out)),
+                                                     size=(n_in, n_out)), dtype=theano.config.floatX)
+            W = theano.shared(value=W_values, name='W')
+        if b is None:
+            b_values = np.zeros((n_out,), dtype=theano.config.floatX)
+            b = theano.shared(value=b_values, name='b')
+
+        self.W = W
+        self.b = b
+
+        if use_bias:
+            lin_output = T.dot(input, self.W) + self.b
+        else:
+            lin_output = T.dot(input, self.W)
+
+        self.output = (lin_output if activation is None else activation(lin_output))
+        self.y_pred
+        # parameters of the model
+        if use_bias:
+            self.params = [self.W, self.b]
+        else:
+            self.params = [self.W]
+
         self.L2 = (self.W**2).sum()
 
     def mse(self, y):
         return T.mean((self.y_pred - y) ** 2)
+
+
+class RegressionNeuralNetwork(object):
+    def __init__(self,rng, input, n_in, n_hidden ,n_out, activation = [Sigmoid,Sigmoid] ):
+
+        self.hiddenlayer = HiddenLayer(rng,input,n_in=n_in, n_out=n_hidden, activation=activation[0])
+
+        self.regressionlayer = RegresstionLayer(rng,self.hiddenlayer.output,n_in=n_hidden,n_out=n_out,activation=activation[1])
+
+        self.mse = self.regressionlayer.mse
+
+        self.params = self.hiddenlayer.params + self.regressionlayer.params
+
+        self.L2 = self.hiddenlayer.L2 + self.regressionlayer.L2
 
 def load_data(rng):
     """

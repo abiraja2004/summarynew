@@ -8,8 +8,10 @@ parser = StanfordParser(path_to_jar="/Users/HyNguyen/Downloads/stanford-parser-f
                         ,model_path="/Users/HyNguyen/Downloads/stanford-parser-full-2015-12-09/stanford-parser-3.6.0-models/edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz")
 
 
-if __name__ =="__main__":
+import pickle
 
+
+def prepapre_sentiment_data():
     with open("../data/rt-polarity.neg.txt",mode="r") as f:
         neg_sent = f.readlines()
 
@@ -34,8 +36,25 @@ if __name__ =="__main__":
             labels.append(label)
         except:
             continue
-    import pickle
+
     with open("hynguyen.pickle",mode="wb") as f:
         pickle.dump((trees,labels),f)
+
+
+import numpy as np
+
+if __name__ =="__main__":
+    rng = np.random.RandomState(0)
+    a = range(0,10)
+    print a
+    rng.shuffle(a)
+    print a
+    b = range(0,10)
+    print b
+    rng.shuffle(b)
+    print b
+
+
+
 
 

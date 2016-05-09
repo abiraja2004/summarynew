@@ -20,6 +20,20 @@ class sigmoid(object):
         return 'sigmoid'
 
 
+class nomarlize(object):
+    @staticmethod
+    def activate(x):
+        return x / (np.linalg.norm(x))
+
+    @staticmethod
+    def derivative(a):
+        
+        return a * (1. - a)
+
+    @staticmethod
+    def get_name():
+        return 'sigmoid'
+
 class tanh(object):
     @staticmethod
     def activate(x):
