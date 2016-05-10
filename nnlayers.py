@@ -68,19 +68,19 @@ class LeNetConvPoolLayer(object):
             W_bound = np.sqrt(6. / (fan_in + fan_out))
             self.W = theano.shared(np.asarray(rng.uniform(low=-W_bound, high=W_bound, size=filter_shape),
                 dtype=theano.config.floatX),borrow=True,name="W_conv")
-        b_values = np.zeros((self.output_shape[1],self.output_shape[2],self.output_shape[3]), dtype=theano.config.floatX)
+        b_values = np.zeros((self.output_shape[1],image_shape[2]-filter_shape[2]+1,image_shape[3]-filter_shape[3]+1), dtype=theano.config.floatX)
         self.b = theano.shared(value=b_values, borrow=True, name="b_conv")
 
         # convolve input feature maps with filters
-        conv_out = conv.conv2d(input=input, filters=self.W,filter_shape=self.filter_shape, image_shape=self.image_shape)
+        self.conv_out = conv.conv2d(input=input, filters=self.W,filter_shape=self.filter_shape, image_shape=self.image_shape)
         if self.non_linear=="tanh":
-            conv_out_tanh = T.tanh(conv_out + self.b)
-            self.output = pool.max_pool_2d(input=conv_out_tanh, ds=self.poolsize, ignore_border=True)
+            self.conv_out_tanh = T.tanh(self.conv_out + self.b)
+            self.output = pool.pool_2d(input=self.conv_out_tanh, ds=self.poolsize, ignore_border=True)
         elif self.non_linear=="relu":
-            conv_out_tanh = ReLU(conv_out + self.b)
-            self.output = pool.max_pool_2d(input=conv_out_tanh, ds=self.poolsize, ignore_border=True)
+            self.conv_out_tanh = ReLU(self.conv_out + self.b)
+            self.output = pool.pool_2d(input=self.conv_out_tanh, ds=self.poolsize, ignore_border=True)
         else:
-            pooled_out = pool.max_pool_2d(input=conv_out, ds=self.poolsize, ignore_border=True)
+            pooled_out = pool.pool_2d(input=self.conv_out, ds=self.poolsize, ignore_border=True)
             self.output = pooled_out + self.b
         self.params = [self.W, self.b]
 
@@ -184,7 +184,7 @@ class RegresstionLayer(object):
             lin_output = T.dot(input, self.W)
 
         self.output = (lin_output if activation is None else activation(lin_output))
-        self.y_pred
+        self.y_pred = self.output.flatten(1)
         # parameters of the model
         if use_bias:
             self.params = [self.W, self.b]
@@ -194,15 +194,16 @@ class RegresstionLayer(object):
         self.L2 = (self.W**2).sum()
 
     def mse(self, y):
+
         return T.mean((self.y_pred - y) ** 2)
 
 
 class RegressionNeuralNetwork(object):
     def __init__(self,rng, input, n_in, n_hidden ,n_out, activation = [Sigmoid,Sigmoid] ):
 
-        self.hiddenlayer = HiddenLayer(rng,input,n_in=n_in, n_out=n_hidden, activation=activation[0])
+        self.hiddenlayer = HiddenLayer(rng,input,n_in=n_in, n_out=n_hidden, activation=activation[0],use_bias=True)
 
-        self.regressionlayer = RegresstionLayer(rng,self.hiddenlayer.output,n_in=n_hidden,n_out=n_out,activation=activation[1])
+        self.regressionlayer = RegresstionLayer(rng,self.hiddenlayer.output,n_in=n_hidden,n_out=n_out,activation=activation[1],use_bias=True)
 
         self.mse = self.regressionlayer.mse
 
