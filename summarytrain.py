@@ -32,7 +32,7 @@ def load_data(rng):
     X = np.concatenate((index_dailymail,index_duc04,index_duc05))
     Y = np.concatenate((score_dailymail,score_duc04,score_duc05))
     Y = np.array(Y, dtype=np.float64)
-    min_max_scaler = preprocessing.MinMaxScaler(feature_range=(-1,1))
+    min_max_scaler = preprocessing.MinMaxScaler()
 
     Y = min_max_scaler.fit_transform(Y)
 
@@ -117,7 +117,7 @@ if __name__ == "__main__":
 
     regess = RegressionNeuralNetwork(rng, input=layer1_input,n_in=input_dims,n_hidden=100,n_out=1,activation=[Sigmoid,Sigmoid])
 
-    mse = regess.mse(Y)
+    mse = regess.entropy(Y)
 
     L2 = sum([conv_layer.L2 for conv_layer in conv_layers]) + regess.L2
 
@@ -132,7 +132,7 @@ if __name__ == "__main__":
     train_model = theano.function([X,Y],[mse, cost],updates=updates)
     valid_model = theano.function([X,Y],[mse, cost])
 
-    showfunction = theano.function(inputs=[X,Y],outputs=cost)
+    showfunction = theano.function(inputs=[X],outputs=regess.regressionlayer.y_pred)
 
     patience = 0
     best_valid_mse_global = 100
@@ -190,8 +190,11 @@ if __name__ == "__main__":
         aver_val_mse = round(np.mean(np.array(valid_mses)),6)
         aver_val_cost = round(np.mean(np.array(valid_costs)),6)
 
-        sys.stdout.write("Epoch {0},\t TrainMSE {1},\t TrainCOST {2},\t ValidationMSE {3},\t ValidationCOST {4},\t Patience {5}".format(epoch_i,aver_train_mse,aver_train_cost,aver_val_mse,aver_val_cost, patience))
+
+        sys.stdout.write("Epoch {0},\t TrainMSE {1},\t TrainCOST {2},\t ValidationMSE {3},\t ValidationCOST {4},\t Patience {5}\n".format(epoch_i,aver_train_mse,aver_train_cost,aver_val_mse,aver_val_cost, patience))
+
         sys.stdout.flush()
+
 
         if aver_val_mse < best_valid_mse_global:
             best_valid_mse_global = aver_val_mse
@@ -204,3 +207,6 @@ if __name__ == "__main__":
             patience +=1
         sys.stdout.write("\n")
 
+        pred = showfunction(X_valid[:10])
+        print(pred)
+        print(Y_valid_rouge2[:10])

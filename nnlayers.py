@@ -86,6 +86,10 @@ class LeNetConvPoolLayer(object):
 
         self.L2 = (self.W**2).sum()
 
+    def set_params(self, params):
+        self.W = params[0]
+        self.b = params[1]
+
     def predict(self, new_data, batch_size):
         """
         predict for new data
@@ -140,6 +144,10 @@ class HiddenLayer(object):
             self.params = [self.W]
 
         self.L2 = (self.W**2).sum()
+
+    def set_params(self, params):
+        self.W = params[0]
+        self.b = params[1]
 
 class ProjectionLayer(object):
     def __init__(self,rng ,input, vocab_size, embsize, input_shape, params = [None], embed_matrix = None):
@@ -197,6 +205,13 @@ class RegresstionLayer(object):
 
         return T.mean((self.y_pred - y) ** 2)
 
+    def entropy(self,y):
+
+        return T.nnet.categorical_crossentropy(self.y_pred,y)
+
+    def set_params(self,params):
+        self.W = params[0]
+        self.b = params[1]
 
 class RegressionNeuralNetwork(object):
     def __init__(self,rng, input, n_in, n_hidden ,n_out, activation = [Sigmoid,Sigmoid] ):
@@ -207,9 +222,17 @@ class RegressionNeuralNetwork(object):
 
         self.mse = self.regressionlayer.mse
 
+        self.entropy = self.regressionlayer.entropy
+
         self.params = self.hiddenlayer.params + self.regressionlayer.params
 
         self.L2 = self.hiddenlayer.L2 + self.regressionlayer.L2
+
+    def set_params(self, params):
+        self.hiddenlayer.W = params[0]
+        self.hiddenlayer.b = params[1]
+        self.regressionlayer.W = params[2]
+        self.regressionlayer.b = params[3]
 
 def load_data(rng):
     """

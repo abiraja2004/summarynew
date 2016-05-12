@@ -7,16 +7,15 @@ from lasagne.updates import sgd, adadelta
 from sklearn import preprocessing
 import time
 import sys
-from nnlayers import RegresstionLayer, LenetConvPoolLayer, FullConectedLayer, ProjectionLayer
 import pickle
 from summarytrain import load_data
+from nnlayers import ProjectionLayer,LeNetConvPoolLayer,RegressionNeuralNetwork,RegresstionLayer,HiddenLayer,Sigmoid,Tanh,ReLU
 
 if __name__ == "__main__":
 
     rng = np.random.RandomState(4488)
 
     X_train, Y_train , X_valid, Y_valid = load_data(rng)
-
     Y_train_rouge1 = Y_train[:,0]
     Y_train_rouge2 = Y_train[:,1]
     Y_train_rougesu4 = Y_train[:,2]
@@ -24,52 +23,89 @@ if __name__ == "__main__":
     Y_valid_rouge1 = Y_valid[:,0]
     Y_valid_rouge2 = Y_valid[:,1]
     Y_valid_rougesu4 = Y_valid[:,2]
-
+    #
     embed_matrix = np.load("data/word2vec/embed_matrix.npy")
-    embed_matrix = np.array(embed_matrix,dtype=np.float64)
-    print(embed_matrix.shape, embed_matrix.dtype)
+    embed_matrix = np.array(embed_matrix,dtype=np.float32)
+    sys.stdout.write("vocab_size {0}, dtype {1}\n".format(embed_matrix.shape, embed_matrix.dtype))
+    sys.stdout.flush()
 
-    X = T.imatrix("X")
+    xxx = Y_train_rouge1[:50]
+
+    embsize = 300
+    img_w = embsize
+    img_h = 80
+    batch_size = 50
+    filter_w = img_w
+    filter_shapes = []
+    pool_sizes = []
+    feature_maps = 100
+    filter_hs = [3,4,5]
+    conv_non_linear = "relu"
+    for filter_h in filter_hs:
+        filter_shapes.append((feature_maps, 1, filter_h, filter_w))
+        pool_sizes.append((img_h-filter_h+1, img_w-filter_w+1))
+
+    print(filter_shapes)
+    print(pool_sizes)
+
+    vocab_size = 69379
+
+    X = T.matrix("X")
     Y = T.dvector("Y")
 
-    minibatch_size = 5
-    sentence_length = X_train.shape[1]
-    embsize = embed_matrix.shape[1]
-    vocab_size = embed_matrix.shape[0]
-    sentence_shape = (minibatch_size, 1, sentence_length, embsize)
-    filter_shape = (20, 1, 5, embed_matrix.shape[1])
-    pool_size = (3,1)
+    with open("model/w2v_rouge2.bin", mode="rb") as f:
+        save_params = pickle.load(f)
 
-    params = [None]*6
-    with open("model/w2v_rouge1.bin", mode="rb") as f:
-        params = pickle.load(f)
+    projection_layer = ProjectionLayer(rng=rng, input=X, vocab_size=vocab_size, embsize=embsize, input_shape=(batch_size,img_h), embed_matrix=embed_matrix)
+    print(projection_layer.output_shape)
 
-    # maybe wrong in 0_index: is UNK work, Yoon Kim set to vector 0
-    project_layer = ProjectionLayer(rng,X,vocab_size,embsize,(minibatch_size,sentence_length),embed_matrix=embed_matrix)
+    conv_layers = []
+    layer1_inputs = []
+    for i in xrange(len(filter_hs)):
+        filter_shape = filter_shapes[i]
+        pool_size = pool_sizes[i]
+        conv_layer = LeNetConvPoolLayer(rng, input=projection_layer.output,image_shape=(batch_size, 1, img_h, img_w),
+                                filter_shape=filter_shape, poolsize=pool_size, non_linear=conv_non_linear)
+        layer1_input = conv_layer.output.flatten(2)
+        conv_layers.append(conv_layer)
+        layer1_inputs.append(layer1_input)
 
-    #conv_layer
-    conv_layer = LenetConvPoolLayer(rng, project_layer.output,sentence_shape,filter_shape,pool_size,params=params[0:2],activation=T.tanh)
 
-    # hidden_layer
-    hidden_input = conv_layer.output.flatten(2)
-    hidden_input_shape = (conv_layer.output_shape[0], conv_layer.output_shape[1]*conv_layer.output_shape[2]*conv_layer.output_shape[3])
-    hidden_layer = FullConectedLayer(rng,hidden_input,hidden_input_shape[1],100,params=params[2:4],activation=T.tanh)
+    layer1_input = T.concatenate(layer1_inputs,1)
+    input_dims = feature_maps*len(filter_hs)
 
-    # regression_layer
-    regession_layer = RegresstionLayer(rng,hidden_layer.output,100,1, params=params[4:6],activation=T.tanh)
+    regess = RegressionNeuralNetwork(rng, input=layer1_input,n_in=input_dims,n_hidden=100,n_out=1,activation=[Sigmoid,Sigmoid])
 
-    mse = regession_layer.mse(Y)
+    regess.set_params(save_params[:4])
+    for i in xrange(len(filter_hs)):
+        print(4+i*2)
+        print(4+i*2+2)
+        conv_layers[i].set_params(save_params[4+i*2:4+i*2+2])
 
-    cost = mse + 0.001 * (conv_layer.L2 + hidden_layer.L2 + regession_layer.L2)
+    mse = regess.mse(Y)
 
-    valid_model = theano.function([X,Y],[mse,cost])
+    L2 = sum([conv_layer.L2 for conv_layer in conv_layers]) + regess.L2
 
-    predict_function = theano.function([X], regession_layer.y_pred)
+    cost = mse + L2
 
-    showfunction = theano.function([X], [project_layer.output, conv_layer.conv_out, conv_layer.pooled_out , conv_layer.output, hidden_layer.output, regession_layer.output])
+    params = regess.params
+    for conv_layer in conv_layers:
+        params+=conv_layer.params
 
-    hy = X_valid[:5]
-    proout, conv_out, pool_out, conv_layer_out , hidden_out, regress_out = showfunction(hy)
-    print(regress_out)
-    print(Y_valid_rouge1[:5])
+    updates = adadelta(cost,params)
+
+    train_model = theano.function([X,Y],[mse, cost],updates=updates)
+    valid_model = theano.function([X,Y],[mse, cost])
+
+    showfunction = theano.function(inputs=[X],outputs=regess.hiddenlayer.output)
+
+    X_mnb = X_valid[:batch_size]
+    Y_mnb = Y_valid_rouge2[:batch_size]
+    print(X_mnb.shape, X_mnb.dtype, Y_mnb, Y_mnb.dtype)
+    pred = showfunction(X_mnb)
+    print pred
+    print Y_valid_rouge2[:batch_size]
+
+
+
 
